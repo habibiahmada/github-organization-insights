@@ -1,0 +1,20 @@
+{
+  "name": "org-graph",
+  "version": "0.1.0",
+  "description": "GitHub Organization Insights — Dynamic SVG analytics for GitHub organizations",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "hono": "^4.6.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "@types/bun": "latest"
+  }
+}
