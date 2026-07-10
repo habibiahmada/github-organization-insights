@@ -41,52 +41,64 @@ Semua output berupa endpoint SVG dinamis.
 
 ## 🧠 Arsitektur Tinggi
 
+Berikut adalah alur permintaan dari klien hingga SVG dihasilkan:
+
+```mermaid
+flowchart TD
+    Client["Klien<br/>(Browser / GitHub README)"]
+    API["API Gateway<br/>(Hono Router)"]
+    Auth["Autentikasi<br/>(Token / OAuth)"]
+    Cache["Cache Manager<br/>(In-Memory / Redis)"]
+    OrgSvc["Organization Service<br/>(Data Profil Org)"]
+    RepoSvc["Repository Service<br/>(Data Repositori)"]
+    ActSvc["Activity Service<br/>(Commit / PR / Issue / Release)"]
+    MemberSvc["Member Service<br/>(Anggota Org)"]
+    GitHubAPI["GitHub API Client<br/>(GraphQL + REST)"]
+    GitHub["GitHub Servers"]
+    Aggregator["Aggregation Engine<br/>(Skor per Hari)"]
+    Matrix["Matrix Generator<br/>(53 Minggu × 7 Hari)"]
+    Theme["Theme Engine<br/>(Angka → Warna)"]
+    SVG["SVG Renderer<br/>(Heatmap / Stats Card)"]
+    Response["HTTP Response<br/>(image/svg+xml)"]
+
+    Client -->|GET /api/graph?org=...| API
+    API --> Auth
+    Auth --> Cache
+    Cache -->|Cache HIT| Response
+    Cache -->|Cache MISS| OrgSvc
+    OrgSvc --> RepoSvc
+    OrgSvc --> ActSvc
+    OrgSvc --> MemberSvc
+    RepoSvc --> GitHubAPI
+    ActSvc --> GitHubAPI
+    MemberSvc --> GitHubAPI
+    GitHubAPI -->|fetch| GitHub
+    GitHub -->|Data Mentah| GitHubAPI
+    GitHubAPI --> Aggregator
+    RepoSvc --> Aggregator
+    ActSvc --> Aggregator
+    Aggregator --> Matrix
+    Matrix --> Theme
+    Theme --> SVG
+    SVG --> Response
+    Response --> Client
 ```
-                             Client
-                    (GitHub README / Browser)
-                              │
-                              │ GET /api/graph
-                              ▼
-                    ┌──────────────────────┐
-                    │     API Gateway      │
-                    └──────────────────────┘
-                              │
-             ┌────────────────┴────────────────┐
-             │                                 │
-             ▼                                 ▼
-      Authentication                    Cache Manager
-             │                                 │
-             └────────────────┬────────────────┘
-                              ▼
-                    Organization Service
-                              │
-             ┌────────────────┼────────────────┐
-             ▼                ▼                ▼
-      Repository Service  Activity Service  Member Service
-             │                │                │
-             └────────────────┼────────────────┘
-                              ▼
-                     GitHub API Client
-                 GraphQL + REST API Layer
-                              │
-                              ▼
-                           GitHub
-                              │
-                              ▼
-                    Aggregation Engine
-                              │
-                              ▼
-                     Matrix Generator
-                              │
-                              ▼
-                     Theme Generator
-                              │
-                              ▼
-                      SVG Renderer
-                              │
-                              ▼
-                         HTTP Response
-```
+
+**Penjelasan alur:**
+
+1. **Klien** (browser atau README) mengirim permintaan ke endpoint `/api/graph`
+2. **API Gateway** (Hono) meneruskan ke middleware autentikasi
+3. **Cache Manager** dicek — jika data sudah tersedia, SVG langsung dikembalikan tanpa memanggil GitHub
+4. Jika **cache miss**, data diambil dari GitHub melalui tiga service paralel:
+   - Organization Service (profil organisasi)
+   - Repository Service (daftar repositori)
+   - Activity Service (commit, PR, issue, release)
+5. Semua service menggunakan **GitHub API Client** yang menggabungkan GraphQL (data struktural) dan REST (data time-series)
+6. Data mentah dari GitHub masuk ke **Aggregation Engine** yang menghitung skor kontribusi per hari
+7. **Matrix Generator** mengubah 365 hari menjadi grid 53×7 (seperti heatmap GitHub)
+8. **Theme Engine** memetakan tingkat aktivitas (0–4) ke warna tema yang dipilih
+9. **SVG Renderer** menggabungkan matrix + tema + label menjadi file SVG
+10. **HTTP Response** dikembalikan ke klien sebagai `image/svg+xml`
 
 ---
 

@@ -8,7 +8,11 @@ import { RepositoryService } from "../github/repository.js";
 import { ActivityService } from "../github/activity.js";
 import { Aggregator } from "../core/aggregator.js";
 import { Scorer } from "../core/scorer.js";
-import { MemoryCache, buildGraphCacheKey, buildStatsCacheKey } from "../cache/index.js";
+import {
+  MemoryCache,
+  buildGraphCacheKey,
+  buildStatsCacheKey,
+} from "../cache/index.js";
 import { getTheme, getAllThemes } from "../core/theme.js";
 import type { Theme } from "../types/theme.js";
 
@@ -52,8 +56,28 @@ export class InsightsService {
   }
 
   /**
+   * Get the year an organization was created on GitHub.
+   */
+  private async resolveOrgCreationYear(org: string): Promise<number> {
+    try {
+      const orgData = await this.orgService.getOrganization(org);
+      if (orgData?.createdAt) {
+        const year = new Date(orgData.createdAt).getFullYear();
+        if (year >= 2000) return year;
+      }
+    } catch {
+      // Ignore error, use fallback
+    }
+    // Fallback: show last 2 years of data
+    return new Date().getFullYear() - 2;
+  }
+
+  /**
    * Get contribution graph data for an organization.
    * Returns the contribution matrix ready for rendering.
+   *
+   * By default (no year or fromYear specified), auto-detects the org creation
+   * year and shows all contributions from creation to the current year.
    */
   async getContributionGraph(options: GraphOptions): Promise<{
     matrix: ContributionMatrix;
@@ -63,7 +87,9 @@ export class InsightsService {
   }> {
     const year = options.year ?? new Date().getFullYear();
     const themeName = options.theme ?? "github-dark";
-    const fromYear = options.fromYear;
+    // When fromYear is not provided, auto-detect from org creation date
+    const fromYear =
+      options.fromYear ?? (await this.resolveOrgCreationYear(options.org));
     const cacheKey = buildGraphCacheKey({
       org: options.org,
       theme: themeName,
@@ -93,9 +119,8 @@ export class InsightsService {
     }
 
     // Determine year range
-    const rangeFromYear = options.fromYear ?? year;
-    const currentYear = new Date().getFullYear();
-    const endYear = options.fromYear ? currentYear : year;
+    const rangeFromYear = Math.min(fromYear, year);
+    const endYear = year;
     const yearsToFetch: number[] = [];
 
     for (let y = rangeFromYear; y <= endYear; y++) {
@@ -106,16 +131,13 @@ export class InsightsService {
     const includePrivate = options.includePrivate ?? true;
     const repos = await this.orgService.getRepositories(
       options.org,
-      includePrivate
+      includePrivate,
     );
 
-    let targetRepos = repos
-      .filter((r) => !r.isArchived && !r.isFork);
+    let targetRepos = repos.filter((r) => !r.isArchived && !r.isFork);
 
     if (options.repo) {
-      targetRepos = targetRepos.filter(
-        (r) => r.name === options.repo
-      );
+      targetRepos = targetRepos.filter((r) => r.name === options.repo);
     }
 
     // Collect activities for all years — parallelized across years & repos
@@ -134,18 +156,20 @@ export class InsightsService {
             options.org,
             repo.name,
             since,
-            until
-          )
+            until,
+          ),
         );
       }
 
       // Also fetch org-level events for this year
       yearRepoPromises.push(
-        this.activityService.getOrganizationEvents(options.org).then((events) =>
-          events.filter(
-            (e) => e.date >= `${y}-01-01` && e.date <= `${y}-12-31`
-          )
-        )
+        this.activityService
+          .getOrganizationEvents(options.org)
+          .then((events) =>
+            events.filter(
+              (e) => e.date >= `${y}-01-01` && e.date <= `${y}-12-31`,
+            ),
+          ),
       );
     }
 
@@ -217,7 +241,7 @@ export class InsightsService {
    */
   async getOrgRepositoryCount(
     org: string,
-    includePrivate: boolean = true
+    includePrivate: boolean = true,
   ): Promise<number> {
     const repos = await this.orgService.getRepositories(org, includePrivate);
     return repos.filter((r) => !r.isArchived && !r.isFork).length;

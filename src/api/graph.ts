@@ -1,8 +1,18 @@
 import type { Context } from "hono";
 import { InsightsService } from "../services/index.js";
 import { getToken } from "../auth/index.js";
-import { renderContributionGraph, renderCompactGraph } from "../renderer/graph.js";
-import { parseYear, parseFromYear, parseScores, parseBoolean, getGitHubToken, errorResponse } from "../utils/index.js";
+import {
+  renderContributionGraph,
+  renderCompactGraph,
+} from "../renderer/graph.js";
+import {
+  parseYear,
+  parseFromYear,
+  parseScores,
+  parseBoolean,
+  getGitHubToken,
+  errorResponse,
+} from "../utils/index.js";
 
 /**
  * GET /api/graph
@@ -17,6 +27,7 @@ import { parseYear, parseFromYear, parseScores, parseBoolean, getGitHubToken, er
  *   repo     - Filter by repository name (optional)
  *   scores   - Custom score weights as comma-separated values (optional)
  *   compact  - Return compact version (optional)
+ *   scope    - Data scope: all, member, public
  *   private  - Include private repos (default: true if token available)
  */
 export async function handleGraphRequest(c: Context): Promise<Response> {
@@ -34,7 +45,7 @@ export async function handleGraphRequest(c: Context): Promise<Response> {
   if (!token) {
     return errorResponse(
       401,
-      "GitHub token not configured. Set GITHUB_TOKEN environment variable."
+      "GitHub token not configured. Set GITHUB_TOKEN environment variable.",
     );
   }
 
@@ -44,7 +55,16 @@ export async function handleGraphRequest(c: Context): Promise<Response> {
   const repo = c.req.query("repo") ?? undefined;
   const scores = parseScores(c.req.query("scores"));
   const compact = parseBoolean(c.req.query("compact"));
-  const includePrivate = parseBoolean(c.req.query("private"));
+  const scope = c.req.query("scope");
+  let includePrivate: boolean | undefined;
+
+  if (scope === "public") {
+    includePrivate = false;
+  } else if (scope === "member") {
+    includePrivate = true;
+  } else {
+    includePrivate = parseBoolean(c.req.query("private"));
+  }
 
   try {
     const service = new InsightsService(token);
@@ -67,7 +87,12 @@ export async function handleGraphRequest(c: Context): Promise<Response> {
     });
 
     if (compact) {
-      const response = renderCompactGraph(result.matrix, result.theme, org, year);
+      const response = renderCompactGraph(
+        result.matrix,
+        result.theme,
+        org,
+        year,
+      );
       response.headers.forEach((v, k) => headers.set(k, v));
       return new Response(await response.text(), {
         headers,
@@ -80,7 +105,7 @@ export async function handleGraphRequest(c: Context): Promise<Response> {
       result.theme,
       org,
       year,
-      repo
+      repo,
     );
 
     // Merge headers
@@ -94,7 +119,7 @@ export async function handleGraphRequest(c: Context): Promise<Response> {
     console.error("Graph generation error:", error);
     return errorResponse(
       500,
-      `Failed to generate contribution graph: ${(error as Error).message}`
+      `Failed to generate contribution graph: ${(error as Error).message}`,
     );
   }
 }

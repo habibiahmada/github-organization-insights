@@ -19,7 +19,7 @@ export class GitHubRESTClient {
     return this.token;
   }
 
-  private async fetch<T>(
+  private async fetchInternal<T>(
     path: string,
     params?: Record<string, string | number>
   ): Promise<T> {
@@ -55,7 +55,7 @@ export class GitHubRESTClient {
     owner: string,
     repo: string
   ): Promise<GitHubCommitActivity[]> {
-    return this.fetch<GitHubCommitActivity[]>(
+    return this.fetchInternal<GitHubCommitActivity[]>(
       `/repos/${owner}/${repo}/stats/commit_activity`
     );
   }
@@ -73,7 +73,7 @@ export class GitHubRESTClient {
       weeks: Array<{ w: number; a: number; d: number; c: number }>;
     }>
   > {
-    return this.fetch<
+    return this.fetchInternal<
       Array<{
         author: { login: string; id: number };
         total: number;
@@ -84,15 +84,33 @@ export class GitHubRESTClient {
 
   /**
    * Get public events for an organization.
+   *
+   * GitHub REST API returns snake_case fields (created_at, avatar_url),
+   * so we map them to our camelCase interface here.
    */
   async getOrganizationEvents(
     org: string,
     page: number = 1
   ): Promise<GitHubEvent[]> {
-    return this.fetch<GitHubEvent[]>(
+    const raw = await this.fetchInternal<Array<Record<string, unknown>>>(
       `/orgs/${org}/events`,
       { per_page: 100, page }
     );
+
+    return raw.map((e) => ({
+      id: String(e.id ?? ""),
+      type: (e.type as GitHubEvent["type"]) ?? "PushEvent",
+      actor: {
+        login: String((e.actor as Record<string, unknown> | undefined)?.login ?? ""),
+        avatarUrl: String((e.actor as Record<string, unknown> | undefined)?.avatar_url ?? ""),
+      },
+      repo: {
+        name: String((e.repo as Record<string, unknown> | undefined)?.name ?? ""),
+        url: String((e.repo as Record<string, unknown> | undefined)?.url ?? ""),
+      },
+      payload: (e.payload ?? {}) as Record<string, unknown>,
+      createdAt: String(e.created_at ?? ""),
+    }));
   }
 
   /**
@@ -112,7 +130,7 @@ export class GitHubRESTClient {
       author: { login: string } | null;
     }>
   > {
-    return this.fetch(
+    return this.fetchInternal(
       `/repos/${owner}/${repo}/commits`,
       { per_page: params?.per_page ?? 100, page: params?.page ?? 1, ...params }
     );
@@ -127,6 +145,6 @@ export class GitHubRESTClient {
       graphql: { limit: number; remaining: number; reset: number };
     };
   }> {
-    return this.fetch("/rate_limit");
+    return this.fetchInternal("/rate_limit");
   }
 }

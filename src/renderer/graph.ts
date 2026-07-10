@@ -19,7 +19,7 @@ const CELL_STEP = CELL_SIZE + CELL_PADDING;
 /** Layout constants */
 const MARGIN_LEFT = 54;
 const MARGIN_TOP = 30;
-const MARGIN_BOTTOM = 20;
+const MARGIN_BOTTOM = 34;
 const LABEL_WIDTH = 28;
 const ROW_LABEL_HEIGHT = 13;
 
@@ -135,6 +135,8 @@ export function renderContributionGraph(
           rx: 2,
           ry: 2,
           fill: fillColor,
+          stroke: theme.colors.border,
+          strokeWidth: 0.5,
         }) + tooltip(`${dayData.count} contributions on ${dayData.date}`),
         undefined,
         fillColor,
@@ -188,10 +190,11 @@ export function renderContributionGraph(
   );
 
   // Footer
+  const footerY = totalHeight - 10;
   parts.push(
     text({
       x: MARGIN_LEFT,
-      y: totalHeight - 10,
+      y: footerY,
       content: `Powered by org-graph.dev • Data from GitHub API`,
       fill: theme.colors.dayLabel,
       fontSize: 9,

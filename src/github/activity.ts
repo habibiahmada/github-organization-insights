@@ -142,16 +142,30 @@ export class ActivityService {
   ): Promise<ActivityItem[]> {
     try {
       const events = await this.rest.getOrganizationEvents(org);
-      return events.map((event) => {
+
+      const activities: ActivityItem[] = [];
+
+      for (const event of events) {
+        const createdAt = event.createdAt;
+        if (!createdAt) continue;
+
+        const repoName = event.repo.name;
+        if (!repoName) continue;
+
+        const author = event.actor.login || "unknown";
+
         const { type, weight } = this.mapEventType(event.type);
-        return {
-          date: event.createdAt.split("T")[0],
+
+        activities.push({
+          date: createdAt.split("T")[0],
           type,
-          repository: event.repo.name.split("/")[1],
-          author: event.actor.login,
+          repository: repoName.split("/")[1] ?? repoName,
+          author,
           weight,
-        };
-      });
+        });
+      }
+
+      return activities;
     } catch (error) {
       console.error(`Failed to fetch events for ${org}:`, error);
       return [];

@@ -21,9 +21,10 @@ import { handleGraphRequest } from "./api/graph.js";
 import { handleStatsRequest } from "./api/stats.js";
 import { handleReposRequest } from "./api/repos.js";
 import { setDefaultToken } from "./auth/index.js";
+import { getToken } from "./auth/index.js";
 import { getGitHubToken } from "./utils/index.js";
 import { getAllThemes } from "./core/theme.js";
-
+import { OrganizationService } from "./github/organization.js";
 
 // Initialize default token from environment
 const token = getGitHubToken();
@@ -32,7 +33,7 @@ if (token) {
   console.log("✓ GitHub token configured");
 } else {
   console.warn(
-    "⚠ GITHUB_TOKEN not set. Set it via environment variable for API access."
+    "⚠ GITHUB_TOKEN not set. Set it via environment variable for API access.",
   );
 }
 
@@ -93,6 +94,36 @@ app.get("/api/themes", (c) => {
     default: "github-dark",
     count: themes.length,
   });
+});
+
+app.get("/api/org", async (c) => {
+  const org = c.req.query("org");
+
+  if (!org) {
+    return c.json({ error: "Missing required parameter: org" }, 400);
+  }
+
+  const token = getToken(c.req.header("Authorization")) || getGitHubToken();
+  if (!token) {
+    return c.json({ error: "GitHub token not configured." }, 401);
+  }
+
+  try {
+    const service = new OrganizationService(token);
+    const organization = await service.getOrganization(org);
+    if (!organization) {
+      return c.json({ error: `Organization ${org} not found` }, 404);
+    }
+
+    const createdYear = new Date(organization.createdAt).getFullYear();
+    return c.json({
+      org: organization.login,
+      createdAt: organization.createdAt,
+      createdYear,
+    });
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 500);
+  }
 });
 
 /**
@@ -229,6 +260,101 @@ app.get("/", async (c) => {
       border-radius: 50%;
       flex-shrink: 0;
     }
+    .demo-inner {
+      display: grid;
+      grid-template-columns: minmax(0, 2.5fr) minmax(230px, 1fr);
+      gap: 18px;
+      align-items: start;
+    }
+    .demo-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .demo-card {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 18px;
+      padding: 18px;
+    }
+    .demo-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+    }
+    .demo-actions label,
+    .filter-group label {
+      color: #8b949e;
+      font-size: 13px;
+    }
+    .demo-actions input,
+    .demo-actions select,
+    .filter-group select {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #f0f6fc;
+      padding: 8px 10px;
+      font-size: 13px;
+    }
+    .demo-image {
+      background: #010409;
+      border: 1px solid #262b33;
+      border-radius: 16px;
+      padding: 16px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .demo-image img {
+      max-width: 100%;
+      display: block;
+      border-radius: 12px;
+      background: #010409;
+    }
+    .year-sidebar {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 18px;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .year-sidebar h3 {
+      margin: 0;
+      color: #c9d1d9;
+      font-size: 14px;
+    }
+    .year-list {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+      max-height: 280px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+    .year-item {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      padding: 10px 12px;
+      color: #8b949e;
+      font-size: 13px;
+      text-align: center;
+      cursor: pointer;
+    }
+    .year-item.active {
+      background: #238636;
+      border-color: #2ea043;
+      color: #f0fff4;
+    }
+    .filter-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
     .footer {
       text-align: center;
       color: #484f58;
@@ -247,29 +373,44 @@ app.get("/", async (c) => {
     <div class="section">
       <h2>Try It</h2>
       <div class="card">
-        <div style="margin-bottom: 16px;">
-          <label style="color: #8b949e; font-size: 13px;">Organization:</label>
-          <input id="orgInput" type="text" value="vercel" placeholder="e.g. vercel"
-            style="background: #1c2128; border: 1px solid #30363d; border-radius: 4px; color: #f0f6fc; padding: 6px 10px; margin: 0 8px; font-size: 13px;">
-          <label style="color: #8b949e; font-size: 13px;">Theme:</label>
-          <select id="themeSelect"
-            style="background: #1c2128; border: 1px solid #30363d; border-radius: 4px; color: #f0f6fc; padding: 6px 10px; margin: 0 8px; font-size: 13px;">
-            <option value="github-dark">GitHub Dark</option>
-            <option value="github-light">GitHub Light</option>
-            <option value="dracula">Dracula</option>
-            <option value="nord">Nord</option>
-            <option value="catppuccin">Catppuccin</option>
-            <option value="tokyo-night">Tokyo Night</option>
-            <option value="monokai">Monokai</option>
-            <option value="solarized-light">Solarized Light</option>
-          </select>
-          <button onclick="updateDemo()"
-            style="background: #238636; color: #fff; border: none; border-radius: 4px; padding: 6px 16px; font-size: 13px; cursor: pointer;">
-            Update
-          </button>
-        </div>
-        <div class="demo-image">
-          <img id="demoGraph" src="/api/graph?org=vercel&theme=github-dark&year=2025" alt="Contribution Graph">
+        <div class="demo-inner">
+          <div class="demo-panel">
+            <div class="demo-actions">
+              <label>Organization:</label>
+              <input id="orgInput" type="text" value="vercel" placeholder="e.g. vercel">
+              <label>Theme:</label>
+              <select id="themeSelect">
+                <option value="github-dark">GitHub Dark</option>
+                <option value="github-light">GitHub Light</option>
+                <option value="dracula">Dracula</option>
+                <option value="nord">Nord</option>
+                <option value="catppuccin">Catppuccin</option>
+                <option value="tokyo-night">Tokyo Night</option>
+                <option value="monokai">Monokai</option>
+                <option value="solarized-light">Solarized Light</option>
+              </select>
+              <button onclick="updateDemo()"
+                style="background: #238636; color: #fff; border: none; border-radius: 6px; padding: 8px 16px; font-size: 13px; cursor: pointer;">
+                Update
+              </button>
+            </div>
+            <div class="demo-image">
+              <img id="demoGraph" src="/api/graph?org=vercel&theme=github-dark" alt="Contribution Graph">
+            </div>
+          </div>
+          <div class="year-sidebar">
+            <h3>Year Filter</h3>
+            <div class="filter-group">
+              <label for="memberSelect">Data Scope</label>
+              <select id="memberSelect">
+                <option value="all">All Organization Data</option>
+                <option value="member">Member-only Data</option>
+                <option value="public">Public Only</option>
+              </select>
+            </div>
+            <h3>Available Years</h3>
+            <div id="yearList" class="year-list"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -345,6 +486,12 @@ app.get("/", async (c) => {
               <td style="padding: 8px 12px; color: #e6edf3;">Filter by repository name</td>
             </tr>
             <tr style="border-bottom: 1px solid #21262d;">
+              <td style="padding: 8px 12px;"><code>scope</code></td>
+              <td style="padding: 8px 12px; color: #8b949e;">string</td>
+              <td style="padding: 8px 12px; color: #8b949e;">all</td>
+              <td style="padding: 8px 12px; color: #e6edf3;">Data scope: &#96;all&#96;, &#96;member&#96;, or &#96;public&#96;</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #21262d;">
               <td style="padding: 8px 12px;"><code>scores</code></td>
               <td style="padding: 8px 12px; color: #8b949e;">string</td>
               <td style="padding: 8px 12px; color: #8b949e;"><code>1,3,2,5,2,2,1</code></td>
@@ -386,9 +533,63 @@ app.get("/", async (c) => {
     function updateDemo() {
       const org = document.getElementById('orgInput').value.trim() || 'vercel';
       const theme = document.getElementById('themeSelect').value;
+      const year = document.querySelector('.year-item.active')?.textContent || new Date().getFullYear();
+      const memberScope = document.getElementById('memberSelect').value;
       const img = document.getElementById('demoGraph');
-      img.src = '/api/graph?org=' + encodeURIComponent(org) + '&theme=' + encodeURIComponent(theme) + '&year=2025&nocache=' + Date.now();
+      img.src = '/api/graph?org=' + encodeURIComponent(org) + '&theme=' + encodeURIComponent(theme) + '&year=' + encodeURIComponent(year) + '&scope=' + encodeURIComponent(memberScope) + '&nocache=' + Date.now();
     }
+
+    function setActiveYear(yearElement) {
+      const items = document.querySelectorAll('.year-item');
+      items.forEach((item) => item.classList.remove('active'));
+      yearElement.classList.add('active');
+    }
+
+    async function populateYearSelect() {
+      const list = document.getElementById('yearList');
+      if (!list) return;
+
+      const org = document.getElementById('orgInput').value.trim() || 'vercel';
+      const currentYear = new Date().getFullYear();
+      const defaultMinYear = currentYear - 2;
+      let minYear = defaultMinYear;
+
+      try {
+        const response = await fetch('/api/org?org=' + encodeURIComponent(org));
+        const data = await response.json();
+        if (response.ok && data.createdYear) {
+          minYear = Math.max(2000, data.createdYear);
+        }
+      } catch {
+        // fallback to last 2 years if API call fails
+      }
+
+      list.innerHTML = '';
+      for (let year = currentYear; year >= minYear; year--) {
+        const item = document.createElement('div');
+        item.className = 'year-item';
+        item.textContent = String(year);
+        item.onclick = () => {
+          setActiveYear(item);
+          updateDemo();
+        };
+        list.appendChild(item);
+      }
+
+      const defaultItem = list.querySelector('.year-item');
+      if (defaultItem) {
+        setActiveYear(defaultItem);
+      }
+    }
+
+    async function refreshYears() {
+      await populateYearSelect();
+    }
+
+    document.getElementById('orgInput').addEventListener('change', refreshYears);
+    document.getElementById('orgInput').addEventListener('blur', refreshYears);
+
+    populateYearSelect();
   </script>
 </body>
 </html>`;
